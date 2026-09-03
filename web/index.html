@@ -83,16 +83,24 @@
 
     <footer>
       <span>処理対象: SchemaVersion=1 / eventType=session_start</span>
-      <span>暗号方式: STI-RSA-OAEP-SHA1-v1</span>
+      <span>暗号方式: STI-AES-CBC-SHA256-v1</span>
     </footer>
   </main>
   <script>
     /*
-      RSA秘密鍵をJWK形式で設定してください。
-      例: {"kty":"RSA","n":"...","e":"AQAB","d":"...","p":"...","q":"...","dp":"...","dq":"...","qi":"..."}
-      この値はHTMLに含まれるため、HTMLを読める利用者には秘密鍵も見えます。
+      AES-CBC復号設定。secretKeyはSHA-256で32バイト鍵に変換されます。
+      暗号化データは encryptedPrefix の後に Base64(IV 16バイト + 暗号文) を続けます。
     */
-    window.STI_PRIVATE_KEY_JWK = null;
+    window.STI_DECRYPTION_CONFIG = {
+      secretKey: "123456789",
+      algorithm: "AES-CBC",
+      keyDerivation: "SHA-256",
+      textEncoding: "UTF-8",
+      encryptedPrefix: "STI-AES-CBC-SHA256-v1:",
+      ivLength: 16,
+      dataFormat: "Base64(IV 16\u30d0\u30a4\u30c8 + \u6697\u53f7\u6587)",
+      padding: "PKCS7"
+    };
   </script>
   <script src="app.js"></script>
 </body>

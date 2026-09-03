@@ -63,21 +63,9 @@
       operation.then(success, failure);
     } else {
       operation.oncomplete = function (event) { success(event.target && event.target.result !== undefined ? event.target.result : event.result); };
-      operation.onerror = function () { failure(new Error("RSA暗号処理に失敗しました。")); };
-      operation.onabort = function () { failure(new Error("RSA暗号処理が中断されました。")); };
+      operation.onerror = function () { failure(new Error("暗号処理に失敗しました。")); };
+      operation.onabort = function () { failure(new Error("暗号処理が中断されました。")); };
     }
-  }
-  function importPrivateKey(callback) {
-    var subtle = getSubtle();
-    var jwk = window.STI_PRIVATE_KEY_JWK;
-    var operation;
-    if (!subtle) { callback(new Error("このブラウザーはWeb Crypto APIに対応していません。")); return; }
-    if (!jwk) { callback(new Error("index.htmlのSTI_PRIVATE_KEY_JWKにRSA秘密鍵を設定してください。")); return; }
-    try {
-      if (typeof jwk === "string") { jwk = JSON.parse(jwk); }
-      operation = subtle.importKey("jwk", jwk, { name: "RSA-OAEP", hash: { name: "SHA-1" } }, false, ["decrypt"]);
-      finishCrypto(operation, function (key) { callback(null, key); }, function (error) { callback(error); });
-    } catch (error) { callback(new Error("RSA秘密鍵の読み込みに失敗しました。")); }
   }
   function base64ToArrayBuffer(value) {
     var binary = window.atob(value.replace(/\s/g, ""));
@@ -95,7 +83,49 @@
     }
     return decodeURIComponent(encoded);
   }
+  function utf8ToArrayBuffer(value) {
+    var encoded = encodeURIComponent(value), bytes = [], i, code;
+    for (i = 0; i < encoded.length; i += 1) {
+      if (encoded.charAt(i) === "%") {
+        code = parseInt(encoded.substr(i + 1, 2), 16); bytes.push(code); i += 2;
+      } else { bytes.push(encoded.charCodeAt(i)); }
+    }
+    return new Uint8Array(bytes).buffer;
+  }
+  function deriveDecryptionKey(callback) {
+    var subtle = getSubtle();
+    var config = window.STI_DECRYPTION_CONFIG, digestOperation, importOperation;
+    if (!subtle) { callback(new Error("Web Crypto APIを利用できません。")); return; }
+    if (!config || config.secretKey === undefined) { callback(new Error("STI_DECRYPTION_CONFIG.secretKeyを設定してください。")); return; }
+    try {
+      digestOperation = subtle.digest({ name: "SHA-256" }, utf8ToArrayBuffer(String(config.secretKey)));
+      finishCrypto(digestOperation, function (digest) {
+        try {
+          importOperation = subtle.importKey("raw", digest, { name: "AES-CBC" }, false, ["decrypt"]);
+          finishCrypto(importOperation, function (key) { callback(null, key); }, function () { callback(new Error("AES鍵の読み込みに失敗しました。")); });
+        } catch (error) { callback(new Error("AES鍵の読み込みに失敗しました。")); }
+      }, function () { callback(new Error("秘密鍵のSHA-256ハッシュ生成に失敗しました。")); });
+    } catch (error) { callback(new Error("AES鍵の生成に失敗しました。")); }
+  }
   function decryptPayload(key, payload, callback) {
+    var config = window.STI_DECRYPTION_CONFIG, value, bytes, iv, ciphertext, operation;
+    if (!config || (payload || "").indexOf(config.encryptedPrefix) !== 0) { callback(new Error("EncryptedPayloadの形式が不正です。")); return; }
+    try {
+      value = (payload || "").substr(config.encryptedPrefix.length);
+      bytes = new Uint8Array(base64ToArrayBuffer(value));
+      if (bytes.length <= config.ivLength || bytes.length - config.ivLength < 16 || (bytes.length - config.ivLength) % 16 !== 0) {
+        callback(new Error("EncryptedPayloadのデータ長が不正です。")); return;
+      }
+      iv = bytes.slice(0, config.ivLength);
+      ciphertext = bytes.slice(config.ivLength);
+      operation = getSubtle().decrypt({ name: "AES-CBC", iv: iv }, key, ciphertext.buffer);
+      finishCrypto(operation, function (plainBuffer) {
+        try { callback(null, JSON.parse(decodeUtf8(plainBuffer))); }
+        catch (error) { callback(new Error("復号後JSONの解析に失敗しました。")); }
+      }, function () { callback(new Error("EncryptedPayloadを復号できません。")); });
+    } catch (error) { callback(new Error("EncryptedPayloadを復号できません。")); }
+  }
+  /* function legacyDecryptPayload(key, payload, callback) {
     var match = /^STI-RSA-OAEP-SHA1-v1:(.+)$/.exec(payload || "");
     var operation;
     if (!match) { callback(new Error("EncryptedPayloadの形式が不正です。")); return; }
@@ -108,6 +138,7 @@
     } catch (error) { callback(new Error("EncryptedPayloadを復号できません。")); }
   }
 
+  } */
   function clearResults() {
     state = { rows: [], logs: [], itemCount: 0 };
     byId("resultBody").innerHTML = '<tr class="empty-row"><td colspan="4">まだ集計結果がありません。</td></tr>';
@@ -201,7 +232,7 @@
       requestAllPages(usersUrl, rawUsers, site, function (userError) {
         if (userError) { setBusy(false); setStatus(userError.message, "error"); return; }
         setStatus("ブラウザー内で復号・集計中…", "busy");
-        importPrivateKey(function (keyError, key) {
+        deriveDecryptionKey(function (keyError, key) {
           if (keyError) { setBusy(false); setStatus(keyError.message, "error"); return; }
           analyzeItems(rawItems, rawUsers, key, function (response) { setBusy(false); renderResults(response); setStatus("集計が完了しました。", "success"); });
         });
