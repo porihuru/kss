@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>利用者アクセス集計</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">SHAREPOINT ANALYZER</p>
+        <h1>利用者アクセス集計</h1>
+        <p class="subtitle">stiuseraccess の暗号化イベントを利用者別に集計します。</p>
+      </div>
+      <div class="security-badge"><span class="lock">&#128274;</span> 秘密鍵はHTML設定に記載</div>
+    </header>
+
+    <section class="panel setup-panel">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">01 / CONNECTION</p>
+          <h2>接続先を指定</h2>
+        </div>
+        <span class="compatibility">IE11 / Edge 95 対応</span>
+      </div>
+      <div class="form-grid">
+        <label class="field field-wide">
+          <span>SharePointサイトURL / パス</span>
+          <input id="siteUrl" type="text" value="/na/NA/NAFin/fin_csm" placeholder="https://contoso.sharepoint.com/sites/portal">
+          <small>対象リスト: /na/NA/NAFin/fin_csm/stiuseraccess。ホストを省略したパスも指定できます。</small>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="runButton" class="primary-button" type="button">取得して集計</button>
+        <button id="clearButton" class="secondary-button" type="button">クリア</button>
+        <span id="status" class="status" aria-live="polite">待機中</span>
+      </div>
+    </section>
+
+    <section class="summary-grid" aria-label="集計サマリー">
+      <div class="metric"><span>取得項目</span><strong id="itemCount">—</strong></div>
+      <div class="metric"><span>集計利用者</span><strong id="userCount">—</strong></div>
+      <div class="metric"><span>開始回数合計</span><strong id="startCount">—</strong></div>
+      <div class="metric"><span>エラー / スキップ</span><strong id="errorCount">—</strong></div>
+    </section>
+
+    <section class="panel result-panel">
+      <div class="section-heading result-heading">
+        <div>
+          <p class="section-kicker">02 / RESULT</p>
+          <h2>利用者別集計</h2>
+        </div>
+        <div class="export-actions">
+          <button id="csvButton" class="secondary-button" type="button" disabled>CSV出力</button>
+          <button id="jsonButton" class="secondary-button" type="button" disabled>JSON出力</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>利用者ID</th><th>氏名</th><th>開始回数</th><th>最終アクセス日時（UTC）</th></tr>
+          </thead>
+          <tbody id="resultBody">
+            <tr class="empty-row"><td colspan="4">まだ集計結果がありません。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel log-panel">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">03 / LOG</p>
+          <h2>解析ログ</h2>
+        </div>
+        <span id="logSummary" class="log-summary">0件</span>
+      </div>
+      <pre id="logOutput" class="log-output">ログはここに表示されます。</pre>
+    </section>
+
+    <footer>
+      <span>処理対象: SchemaVersion=1 / eventType=session_start</span>
+      <span>暗号方式: STI-RSA-OAEP-SHA1-v1</span>
+    </footer>
+  </main>
+  <script>
+    /*
+      RSA秘密鍵をJWK形式で設定してください。
+      例: {"kty":"RSA","n":"...","e":"AQAB","d":"...","p":"...","q":"...","dp":"...","dq":"...","qi":"..."}
+      この値はHTMLに含まれるため、HTMLを読める利用者には秘密鍵も見えます。
+    */
+    window.STI_PRIVATE_KEY_JWK = null;
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
