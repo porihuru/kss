@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>利用者アクセス集計</title>
-  <link rel="stylesheet" href="styles.css?v=20260904-aes3">
+  <link rel="stylesheet" href="styles.css?v=20260904-schema2-4">
 </head>
 <body>
   <main class="app-shell">
@@ -16,9 +16,9 @@
       <div>
         <p class="eyebrow">SHAREPOINT ANALYZER</p>
         <h1>利用者アクセス集計</h1>
-        <p class="subtitle">stiuseraccess の暗号化イベントを利用者別に集計します。</p>
+        <p class="subtitle">stiuseraccess の SchemaVersion=2 を復号し、利用者ごとの問題開始回数を表示します。</p>
       </div>
-      <div class="security-badge"><span class="lock">&#128274;</span> AES-CBC解析版 / 20260904-3</div>
+      <div class="security-badge"><span class="lock">&#128274;</span> Schema2解析版 / 20260904-4</div>
     </header>
 
     <section class="panel setup-panel">
@@ -33,7 +33,7 @@
         <label class="field field-wide">
           <span>SharePointサイトURL / パス</span>
           <input id="siteUrl" type="text" value="/na/NA/NAFin/fin_csm" placeholder="https://contoso.sharepoint.com/sites/portal">
-          <small>対象リスト: /na/NA/NAFin/fin_csm/stiuseraccess。ホストを省略したパスも指定できます。</small>
+          <small>対象リスト: stiuseraccess。SchemaVersion=2 / eventType=question_start_summary のみ現在データとして処理します。</small>
         </label>
       </div>
       <div class="actions">
@@ -46,8 +46,8 @@
     <section class="summary-grid" aria-label="集計サマリー">
       <div class="metric"><span>取得項目</span><strong id="itemCount">—</strong></div>
       <div class="metric"><span>集計利用者</span><strong id="userCount">—</strong></div>
-      <div class="metric"><span>開始回数合計</span><strong id="startCount">—</strong></div>
-      <div class="metric"><span>エラー / スキップ</span><strong id="errorCount">—</strong></div>
+      <div class="metric"><span>問題開始回数合計</span><strong id="startCount">—</strong></div>
+      <div class="metric"><span>対象外 / エラー</span><strong id="errorCount">—</strong></div>
     </section>
 
     <section class="panel result-panel">
@@ -64,7 +64,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>利用者ID</th><th>氏名</th><th>開始回数</th><th>最終アクセス日時（UTC）</th></tr>
+            <tr><th>利用者ID</th><th>氏名</th><th>問題開始回数</th><th>最終問題開始（JST）</th></tr>
           </thead>
           <tbody id="resultBody">
             <tr class="empty-row"><td colspan="4">まだ集計結果がありません。</td></tr>
@@ -85,11 +85,12 @@
     </section>
 
     <footer>
-      <span>処理対象: SchemaVersion=1 / eventType=session_start</span>
+      <span>処理対象: SchemaVersion=2 / eventType=question_start_summary</span>
       <span>暗号方式: STI-AES-CBC-SHA256-v1</span>
-      <span>解析版: AES-v3 / build 20260904-3</span>
+      <span>解析版: Schema2 / build 20260904-4</span>
     </footer>
   </main>
+
   <script>
     window.STI_DECRYPTION_CONFIG = {
       secretKey: "123456789",
@@ -102,6 +103,6 @@
       padding: "PKCS7"
     };
   </script>
-  <script src="app.js?v=20260904-aes3"></script>
+  <script src="app.js?v=20260904-schema2-4"></script>
 </body>
 </html>
