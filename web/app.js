@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var BUILD = "AES-v3 / 20260904-3";
+  var BUILD = "Schema2 / 20260904-4";
   var PREFIX_PATTERN = /STI\s*-\s*AES\s*-\s*CBC\s*-\s*SHA256\s*-\s*v1\s*:\s*/i;
   var IV_LENGTH = 16;
   var state = { rows: [], logs: [], itemCount: 0 };
@@ -150,11 +150,9 @@
     var tail, encodedMatch, encoded;
 
     if (!match) {
-      /* SharePointの表示形式等でプレフィックス内に改行等が入っても拾えるよう、空白を除いた文字列でも再試行する。 */
       text = text.replace(/[\s\u00A0\u3000]+/g, "");
       match = /STI-AES-CBC-SHA256-v1:/i.exec(text);
     }
-
     if (!match) {
       throw new Error("AES-v1プレフィックスを検出できません。受信値先頭: " + payloadPreview(payload));
     }
@@ -226,6 +224,17 @@
     }
   }
 
+  function pad2(value) { return value < 10 ? "0" + value : String(value); }
+
+  function formatJst(utcValue) {
+    var d = new Date(utcValue);
+    var jst;
+    if (isNaN(d.getTime())) { return ""; }
+    jst = new Date(d.getTime() + (9 * 60 * 60 * 1000));
+    return jst.getUTCFullYear() + "/" + pad2(jst.getUTCMonth() + 1) + "/" + pad2(jst.getUTCDate()) +
+      " " + pad2(jst.getUTCHours()) + ":" + pad2(jst.getUTCMinutes());
+  }
+
   function clearResults() {
     state = { rows: [], logs: [], itemCount: 0 };
     byId("resultBody").innerHTML = '<tr class="empty-row"><td colspan="4">まだ集計結果がありません。</td></tr>';
@@ -244,8 +253,9 @@
   }
 
   function analyzeItems(items, users, key, callback) {
-    var groups = {}, names = {}, logs = [], seen = {}, index = 0, skipped = 0, processed = 0, i;
-    var rows, totalStarts, uid, name, payload, event, date, normalized, group;
+    var names = {}, logs = [], seenItems = {}, userRows = {};
+    var index = 0, skipped = 0, legacyCount = 0, validCount = 0, i;
+    var uid, name;
 
     for (i = 0; i < users.length; i += 1) {
       uid = String(userId(users[i]));
@@ -256,40 +266,27 @@
     }
 
     function next() {
-      var item, id, schema;
+      var item, id, schema, payload;
       if (index >= items.length) {
-        rows = [];
-        totalStarts = 0;
-        for (uid in groups) {
-          if (has(groups, uid)) {
-            rows.push({ userId: groups[uid].userId, userName: groups[uid].userName, startCount: groups[uid].startCount, lastAccessUtc: groups[uid].lastAccessUtc });
-            totalStarts += groups[uid].startCount;
-          }
-        }
-        rows.sort(function (left, right) {
-          var ln = parseInt(left.userId, 10), rn = parseInt(right.userId, 10);
-          if (!isNaN(ln) && !isNaN(rn)) { return ln - rn; }
-          return String(left.userId).localeCompare(String(right.userId));
-        });
-        callback({ results: rows, logs: logs, stats: { totalItems: items.length, startCount: totalStarts, skippedCount: skipped, userCount: rows.length, processedCount: processed } });
+        finish();
         return;
       }
 
       item = items[index];
       index += 1;
       id = itemId(item);
-      if (id === undefined || id === null || id === "" || has(seen, String(id))) {
+
+      if (id === undefined || id === null || id === "" || has(seenItems, String(id))) {
         skipped += 1;
         addLog(logs, "skip", id, "SharePoint項目IDが空、または重複しています。");
         next();
         return;
       }
-      seen[String(id)] = true;
+      seenItems[String(id)] = true;
 
       schema = String(itemSchema(item));
-      if (schema !== "1") {
-        skipped += 1;
-        addLog(logs, "skip", id, "SchemaVersionが1ではありません。");
+      if (schema !== "2") {
+        legacyCount += 1;
         next();
         return;
       }
@@ -303,6 +300,7 @@
       }
 
       decryptPayload(key, payload, function (error, parsed) {
+        var count, date, normalized, row, existing;
         if (error) {
           skipped += 1;
           addLog(logs, "skip", id, error.message);
@@ -310,36 +308,93 @@
           return;
         }
 
-        event = parsed;
-        if (!event || event.eventType !== "session_start") {
+        if (!parsed || parsed.eventType !== "question_start_summary") {
           skipped += 1;
-          addLog(logs, "skip", id, "eventTypeがsession_startではありません。");
+          addLog(logs, "skip", id, "eventTypeがquestion_start_summaryではありません。");
           next();
           return;
         }
 
-        uid = trimText(event.userId);
-        date = new Date(event.lastAccessUtc);
-        if (!uid || isNaN(date.getTime())) {
+        uid = trimText(parsed.userId);
+        count = parsed.questionStartCount;
+        date = new Date(parsed.lastQuestionStartUtc);
+
+        if (!uid) {
           skipped += 1;
-          addLog(logs, "skip", id, "userIdまたはlastAccessUtcが不正です。");
+          addLog(logs, "skip", id, "userIdがありません。");
+          next();
+          return;
+        }
+        if (typeof count !== "number" || !isFinite(count) || count < 0 || Math.floor(count) !== count) {
+          skipped += 1;
+          addLog(logs, "skip", id, "questionStartCountが0以上の整数ではありません。");
+          next();
+          return;
+        }
+        if (isNaN(date.getTime())) {
+          skipped += 1;
+          addLog(logs, "skip", id, "lastQuestionStartUtcが不正です。");
           next();
           return;
         }
 
         normalized = date.toISOString();
-        if (!has(groups, uid)) {
-          name = has(names, uid) && names[uid] ? names[uid] : "未照合";
-          groups[uid] = { userId: uid, userName: name, startCount: 0, lastAccessUtc: normalized, lastTime: date.getTime() };
-        }
-        group = groups[uid];
-        group.startCount += 1;
-        processed += 1;
-        if (date.getTime() > group.lastTime) {
-          group.lastTime = date.getTime();
-          group.lastAccessUtc = normalized;
+        row = {
+          itemId: id,
+          userId: uid,
+          userName: has(names, uid) && names[uid] ? names[uid] : "未照合",
+          questionStartCount: count,
+          lastQuestionStartUtc: normalized,
+          lastQuestionStartJst: formatJst(normalized),
+          lastTime: date.getTime()
+        };
+
+        if (has(userRows, uid)) {
+          existing = userRows[uid];
+          skipped += 1;
+          addLog(logs, "skip", id, "同一userIdのSchemaVersion=2項目が複数あります。最終開始日時が新しい項目を採用します。");
+          if (row.lastTime > existing.lastTime) { userRows[uid] = row; }
+        } else {
+          userRows[uid] = row;
+          validCount += 1;
         }
         next();
+      });
+    }
+
+    function finish() {
+      var rows = [], total = 0, keyName, row;
+      for (keyName in userRows) {
+        if (has(userRows, keyName)) {
+          row = userRows[keyName];
+          rows.push({
+            userId: row.userId,
+            userName: row.userName,
+            questionStartCount: row.questionStartCount,
+            lastQuestionStartUtc: row.lastQuestionStartUtc,
+            lastQuestionStartJst: row.lastQuestionStartJst
+          });
+          total += row.questionStartCount;
+        }
+      }
+
+      rows.sort(function (left, right) {
+        var ln = parseInt(left.userId, 10), rn = parseInt(right.userId, 10);
+        if (!isNaN(ln) && !isNaN(rn)) { return ln - rn; }
+        return String(left.userId).localeCompare(String(right.userId));
+      });
+
+      callback({
+        results: rows,
+        logs: logs,
+        stats: {
+          totalItems: items.length,
+          userCount: rows.length,
+          totalQuestionStarts: total,
+          skippedCount: skipped,
+          legacyCount: legacyCount,
+          validCount: validCount
+        }
       });
     }
 
@@ -350,63 +405,81 @@
     var lines = ["Analyzer " + BUILD], i, log;
     for (i = 0; i < logs.length; i += 1) {
       log = logs[i];
-      lines.push("[" + (log.level || "info") + "] " + (log.itemId !== undefined ? "Item " + log.itemId + ": " : "") + log.message);
+      lines.push("[" + (log.level || "info") + "] " +
+        (log.itemId !== undefined && log.itemId !== null ? "Item " + log.itemId + ": " : "") + log.message);
     }
+    if (logs.length === 0) { lines.push("エラー・スキップはありません。"); }
     return lines.join("\n");
   }
 
   function renderResults(response) {
-    var rows = response.results || [], logs = response.logs || [], body = byId("resultBody"), i, tr, td;
+    var rows = response.results || [];
+    var logs = response.logs || [];
+    var stats = response.stats || {};
+    var body = byId("resultBody"), i, tr, td;
+
     state.rows = rows;
     state.logs = logs;
-    state.itemCount = response.stats ? response.stats.totalItems : 0;
+    state.itemCount = stats.totalItems || 0;
     body.innerHTML = "";
 
     if (!rows.length) {
-      body.innerHTML = '<tr class="empty-row"><td colspan="4">条件に一致するイベントがありません。</td></tr>';
+      body.innerHTML = '<tr class="empty-row"><td colspan="4">SchemaVersion=2 の有効な利用記録がありません。</td></tr>';
     }
+
     for (i = 0; i < rows.length; i += 1) {
       tr = document.createElement("tr");
       td = document.createElement("td"); td.textContent = rows[i].userId; tr.appendChild(td);
       td = document.createElement("td"); td.textContent = rows[i].userName || "未照合"; tr.appendChild(td);
-      td = document.createElement("td"); td.textContent = rows[i].startCount; tr.appendChild(td);
-      td = document.createElement("td"); td.textContent = rows[i].lastAccessUtc; tr.appendChild(td);
+      td = document.createElement("td"); td.textContent = rows[i].questionStartCount; tr.appendChild(td);
+      td = document.createElement("td"); td.textContent = rows[i].lastQuestionStartJst; tr.appendChild(td);
       body.appendChild(tr);
     }
 
-    byId("itemCount").textContent = String(state.itemCount);
+    byId("itemCount").textContent = String(stats.totalItems || 0);
     byId("userCount").textContent = String(rows.length);
-    byId("startCount").textContent = String(response.stats ? response.stats.startCount : 0);
-    byId("errorCount").textContent = String(response.stats ? response.stats.skippedCount : logs.length);
+    byId("startCount").textContent = String(stats.totalQuestionStarts || 0);
+    byId("errorCount").textContent = String((stats.skippedCount || 0) + (stats.legacyCount || 0));
     byId("logSummary").textContent = String(logs.length) + "件";
-    byId("logOutput").textContent = logs.length ? formatLogs(logs) : "Analyzer " + BUILD + "\nエラー・スキップはありません。";
+    byId("logOutput").textContent = formatLogs(logs);
     byId("csvButton").disabled = !rows.length;
     byId("jsonButton").disabled = !rows.length;
   }
 
   function run() {
     var site = trimSlash(byId("siteUrl").value.replace(/\s+/g, ""));
-    var rawItems = [], rawUsers = [], itemsUrl, usersUrl;
+    var rawItems = [], rawUsers = [];
+    var itemsUrl, usersUrl;
+
     if (!site) { setStatus("SharePointサイトURLを入力してください。", "error"); return; }
 
     clearResults();
     setBusy(true);
-    setStatus("SharePointの項目を取得中…", "busy");
-    itemsUrl = site + "/_api/web/lists/getbytitle('stiuseraccess')/items?$select=Id,SchemaVersion,EncryptedPayload&$top=5000";
+    setStatus("stiuseraccess を取得中…", "busy");
+
+    itemsUrl = site + "/_api/web/lists/getbytitle('stiuseraccess')/items?$select=Id,Title,SchemaVersion,EncryptedPayload&$top=5000";
     usersUrl = site + "/_api/web/siteusers?$select=Id,Title,LoginName,Email&$top=5000";
 
     requestAllPages(itemsUrl, rawItems, site, function (itemError) {
       if (itemError) { setBusy(false); setStatus(itemError.message, "error"); return; }
+
       setStatus("SharePointユーザー情報を取得中…", "busy");
       requestAllPages(usersUrl, rawUsers, site, function (userError) {
         if (userError) { setBusy(false); setStatus(userError.message, "error"); return; }
-        setStatus("ブラウザー内で復号・集計中…", "busy");
+
+        setStatus("SchemaVersion=2 を復号・集計中…", "busy");
         deriveDecryptionKey(function (keyError, key) {
           if (keyError) { setBusy(false); setStatus(keyError.message, "error"); return; }
+
           analyzeItems(rawItems, rawUsers, key, function (response) {
+            var stats = response.stats || {};
             setBusy(false);
             renderResults(response);
-            setStatus("集計が完了しました。", "success");
+            setStatus(
+              "集計完了: 利用者 " + (stats.userCount || 0) + "人 / 問題開始 " +
+              (stats.totalQuestionStarts || 0) + "回 / 旧形式除外 " + (stats.legacyCount || 0) + "件",
+              "success"
+            );
           });
         });
       });
@@ -434,22 +507,30 @@
   }
 
   function exportCsv() {
-    var text = "\ufeffuserId,userName,startCount,lastAccessUtc\r\n", i, row;
+    var text = "\ufeffuserId,userName,questionStartCount,lastQuestionStartUtc,lastQuestionStartJst\r\n";
+    var i, row;
     for (i = 0; i < state.rows.length; i += 1) {
       row = state.rows[i];
-      text += [csvEscape(row.userId), csvEscape(row.userName), csvEscape(row.startCount), csvEscape(row.lastAccessUtc)].join(",") + "\r\n";
+      text += [
+        csvEscape(row.userId),
+        csvEscape(row.userName),
+        csvEscape(row.questionStartCount),
+        csvEscape(row.lastQuestionStartUtc),
+        csvEscape(row.lastQuestionStartJst)
+      ].join(",") + "\r\n";
     }
-    download("stiuseraccess-summary.csv", text, "text/csv;charset=utf-8");
+    download("stiuseraccess-schema2-summary.csv", text, "text/csv;charset=utf-8");
   }
 
   function exportJson() {
-    download("stiuseraccess-summary.json", JSON.stringify(state.rows, null, 2), "application/json;charset=utf-8");
+    download("stiuseraccess-schema2-summary.json", JSON.stringify(state.rows, null, 2), "application/json;charset=utf-8");
   }
 
   byId("runButton").onclick = run;
   byId("clearButton").onclick = function () { clearResults(); setStatus("待機中 / " + BUILD); };
   byId("csvButton").onclick = exportCsv;
   byId("jsonButton").onclick = exportJson;
+
   clearResults();
   setStatus("待機中 / " + BUILD);
 }());
