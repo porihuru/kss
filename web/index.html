@@ -5,7 +5,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>利用者アクセス集計</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260904-aes1">
 </head>
 <body>
   <main class="app-shell">
@@ -15,7 +15,7 @@
         <h1>利用者アクセス集計</h1>
         <p class="subtitle">stiuseraccess の暗号化イベントを利用者別に集計します。</p>
       </div>
-      <div class="security-badge"><span class="lock">&#128274;</span> 秘密鍵はHTML設定に記載</div>
+      <div class="security-badge"><span class="lock">&#128274;</span> AES-CBC解析版 / 20260904-1</div>
     </header>
 
     <section class="panel setup-panel">
@@ -84,6 +84,7 @@
     <footer>
       <span>処理対象: SchemaVersion=1 / eventType=session_start</span>
       <span>暗号方式: STI-AES-CBC-SHA256-v1</span>
+      <span>解析版: AES-v1 / build 20260904-1</span>
     </footer>
   </main>
   <script>
@@ -102,6 +103,6 @@
       padding: "PKCS7"
     };
   </script>
-  <script src="app.js"></script>
+  <script src="app.js?v=20260904-aes1"></script>
 </body>
 </html>
