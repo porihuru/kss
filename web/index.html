@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>利用者アクセス集計</title>
-  <link rel="stylesheet" href="styles.css?v=20260904-schema2-5">
+  <link rel="stylesheet" href="styles.css?v=20261015-sort1">
 </head>
 <body>
   <main class="app-shell">
@@ -18,7 +18,7 @@
         <h1>利用者アクセス集計</h1>
         <p class="subtitle">stiuseraccess の SchemaVersion=2 を復号し、利用者ごとの問題開始回数を表示します。</p>
       </div>
-      <div class="security-badge"><span class="lock">&#128274;</span> Schema2解析版 / 20260904-5</div>
+      <div class="security-badge"><span class="lock">&#128274;</span> Schema2解析版 / UI 20261015-1</div>
     </header>
 
     <section class="panel setup-panel">
@@ -62,9 +62,14 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="result-table" id="resultTable">
           <thead>
-            <tr><th>利用者ID</th><th>氏名</th><th>問題開始回数</th><th>最終問題開始（JST）</th></tr>
+            <tr>
+              <th><button class="sort-button" type="button" data-sort-column="0" data-sort-type="number">利用者ID<span class="sort-mark">↕</span></button></th>
+              <th><button class="sort-button" type="button" data-sort-column="1" data-sort-type="text">氏名<span class="sort-mark">↕</span></button></th>
+              <th><button class="sort-button" type="button" data-sort-column="2" data-sort-type="number">回数<span class="sort-mark">↕</span></button></th>
+              <th><button class="sort-button" type="button" data-sort-column="3" data-sort-type="date">最終問題開始<span class="sort-mark">↕</span></button></th>
+            </tr>
           </thead>
           <tbody id="resultBody">
             <tr class="empty-row"><td colspan="4">まだ集計結果がありません。</td></tr>
@@ -87,7 +92,7 @@
     <footer>
       <span>処理対象: SchemaVersion=2 / eventType=question_start_summary</span>
       <span>暗号方式: STI-AES-CBC-SHA256-v1</span>
-      <span>解析版: Schema2 / build 20260904-5</span>
+      <span>解析版: Schema2 / build 20260904-5 / UI 20261015-1</span>
     </footer>
   </main>
 
@@ -99,10 +104,11 @@
       textEncoding: "UTF-8",
       encryptedPrefix: "STI-AES-CBC-SHA256-v1:",
       ivLength: 16,
-      dataFormat: "Base64(IV 16\u30d0\u30a4\u30c8 + \u6697\u53f7\u6587)",
+      dataFormat: "Base64(IV 16バイト + 暗号文)",
       padding: "PKCS7"
     };
   </script>
   <script src="app.js?v=20260904-schema2-5"></script>
+  <script src="sort.js?v=20261015-sort1"></script>
 </body>
 </html>
