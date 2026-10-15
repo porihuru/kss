@@ -1,10 +1,10 @@
 (function () {
   "use strict";
 
-  var BUILD = "Schema2 / 20260904-5";
+  var BUILD = "Schema2 / 20261015-1";
   var PREFIX = "STI-AES-CBC-SHA256-v1:";
   var IV_LENGTH = 16;
-  var state = { rows: [], logs: [], itemCount: 0 };
+  var state = { rows: [], logs: [], itemCount: 0, sortKey: "userId", sortDirection: "asc" };
 
   function byId(id) { return document.getElementById(id); }
   function has(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
@@ -390,6 +390,92 @@
     next();
   }
 
+
+  function compareUserId(left, right) {
+    var ln = parseInt(left, 10), rn = parseInt(right, 10);
+    if (!isNaN(ln) && !isNaN(rn)) { return ln - rn; }
+    return String(left || "").localeCompare(String(right || ""));
+  }
+
+  function getSortedRows() {
+    var rows = state.rows.slice(0);
+    var key = state.sortKey;
+    var direction = state.sortDirection === "desc" ? -1 : 1;
+
+    rows.sort(function (left, right) {
+      var result = 0;
+      if (key === "userId") {
+        result = compareUserId(left.userId, right.userId);
+      } else if (key === "userName") {
+        result = String(left.userName || "").localeCompare(String(right.userName || ""));
+      } else if (key === "questionStartCount") {
+        result = Number(left.questionStartCount || 0) - Number(right.questionStartCount || 0);
+      } else if (key === "lastQuestionStartUtc") {
+        result = new Date(left.lastQuestionStartUtc).getTime() - new Date(right.lastQuestionStartUtc).getTime();
+      }
+      if (result === 0 && key !== "userId") {
+        result = compareUserId(left.userId, right.userId);
+      }
+      return result * direction;
+    });
+    return rows;
+  }
+
+  function updateSortHeaders() {
+    var definitions = [
+      { id: "sortUserId", key: "userId" },
+      { id: "sortUserName", key: "userName" },
+      { id: "sortCount", key: "questionStartCount" },
+      { id: "sortLastStart", key: "lastQuestionStartUtc" }
+    ];
+    var i, button, mark, th, active;
+    for (i = 0; i < definitions.length; i += 1) {
+      button = byId(definitions[i].id);
+      if (!button) { continue; }
+      active = state.sortKey === definitions[i].key;
+      button.className = "sort-button" + (active ? " active" : "");
+      mark = button.getElementsByTagName("span")[0];
+      if (mark) { mark.textContent = active ? (state.sortDirection === "asc" ? "▲" : "▼") : "↕"; }
+      th = button.parentNode;
+      if (th && th.setAttribute) {
+        th.setAttribute("aria-sort", active ? (state.sortDirection === "asc" ? "ascending" : "descending") : "none");
+      }
+    }
+  }
+
+  function renderResultRows() {
+    var rows = getSortedRows();
+    var body = byId("resultBody");
+    var i, tr, td;
+    body.innerHTML = "";
+
+    if (!rows.length) {
+      body.innerHTML = '<tr class="empty-row"><td colspan="4">SchemaVersion=2 の有効な利用記録がありません。</td></tr>';
+      updateSortHeaders();
+      return;
+    }
+
+    for (i = 0; i < rows.length; i += 1) {
+      tr = document.createElement("tr");
+      td = document.createElement("td"); td.textContent = rows[i].userId; tr.appendChild(td);
+      td = document.createElement("td"); td.textContent = rows[i].userName || "未照合"; tr.appendChild(td);
+      td = document.createElement("td"); td.className = "count-cell"; td.textContent = rows[i].questionStartCount; tr.appendChild(td);
+      td = document.createElement("td"); td.textContent = rows[i].lastQuestionStartJst; tr.appendChild(td);
+      body.appendChild(tr);
+    }
+    updateSortHeaders();
+  }
+
+  function sortBy(key) {
+    if (state.sortKey === key) {
+      state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
+    } else {
+      state.sortKey = key;
+      state.sortDirection = (key === "questionStartCount" || key === "lastQuestionStartUtc") ? "desc" : "asc";
+    }
+    renderResultRows();
+  }
+
   function formatLogs(logs) {
     var lines = ["Analyzer " + BUILD], i, log;
     for (i = 0; i < logs.length; i += 1) {
@@ -402,7 +488,7 @@
   }
 
   function clearResults() {
-    state = { rows: [], logs: [], itemCount: 0 };
+    state = { rows: [], logs: [], itemCount: 0, sortKey: "userId", sortDirection: "asc" };
     byId("resultBody").innerHTML = '<tr class="empty-row"><td colspan="4">まだ集計結果がありません。</td></tr>';
     byId("logOutput").textContent = "Analyzer " + BUILD + "\nログはここに表示されます。";
     byId("logSummary").textContent = "0件";
@@ -423,20 +509,7 @@
     state.rows = rows;
     state.logs = logs;
     state.itemCount = stats.totalItems || 0;
-    body.innerHTML = "";
-
-    if (!rows.length) {
-      body.innerHTML = '<tr class="empty-row"><td colspan="4">SchemaVersion=2 の有効な利用記録がありません。</td></tr>';
-    }
-
-    for (i = 0; i < rows.length; i += 1) {
-      tr = document.createElement("tr");
-      td = document.createElement("td"); td.textContent = rows[i].userId; tr.appendChild(td);
-      td = document.createElement("td"); td.textContent = rows[i].userName || "未照合"; tr.appendChild(td);
-      td = document.createElement("td"); td.textContent = rows[i].questionStartCount; tr.appendChild(td);
-      td = document.createElement("td"); td.textContent = rows[i].lastQuestionStartJst; tr.appendChild(td);
-      body.appendChild(tr);
-    }
+    renderResultRows();
 
     byId("itemCount").textContent = String(stats.totalItems || 0);
     byId("userCount").textContent = String(rows.length);
@@ -504,8 +577,9 @@
   function exportCsv() {
     var text = "\ufeffuserId,userName,questionStartCount,lastQuestionStartUtc,lastQuestionStartJst\r\n";
     var i, row;
-    for (i = 0; i < state.rows.length; i += 1) {
-      row = state.rows[i];
+    var rows = getSortedRows();
+    for (i = 0; i < rows.length; i += 1) {
+      row = rows[i];
       text += [
         csvEscape(row.userId),
         csvEscape(row.userName),
@@ -518,12 +592,16 @@
   }
 
   function exportJson() {
-    download("stiuseraccess-summary.json", JSON.stringify(state.rows, null, 2), "application/json;charset=utf-8");
+    download("stiuseraccess-summary.json", JSON.stringify(getSortedRows(), null, 2), "application/json;charset=utf-8");
   }
 
   byId("runButton").onclick = run;
   byId("clearButton").onclick = function () { clearResults(); setStatus("待機中"); };
   byId("csvButton").onclick = exportCsv;
   byId("jsonButton").onclick = exportJson;
+  byId("sortUserId").onclick = function () { sortBy("userId"); };
+  byId("sortUserName").onclick = function () { sortBy("userName"); };
+  byId("sortCount").onclick = function () { sortBy("questionStartCount"); };
+  byId("sortLastStart").onclick = function () { sortBy("lastQuestionStartUtc"); };
   clearResults();
 }());
