@@ -20,9 +20,9 @@
   }
 
   function toDateValue(value) {
-    var text = String(value || "").replace(/\//g, "-");
-    var date = new Date(text);
-    return isNaN(date.getTime()) ? 0 : date.getTime();
+    var digits = String(value || "").replace(/[^0-9]/g, "");
+    var number = parseFloat(digits);
+    return isNaN(number) ? 0 : number;
   }
 
   function compareValues(left, right, type) {
